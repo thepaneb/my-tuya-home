@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eventos — Minhas Tomadas</title>
+<link rel="stylesheet" href="/static/style.css?v=3">
+</head>
+<body>
+<header>
+  <div><h1>Eventos</h1><p><a href="/">← Painel</a> · <a href="/dashboard">Dashboard</a> · nuvem Tuya</p></div>
+</header>
+<main class="setup" id="ev"></main>
+<script>
+async function load(){
+  const ids = [{% for d in devices %}"{{ d.id }}"{% if not loop.last %},{% endif %}{% endfor %}];
+  const names = { {% for d in devices %}"{{ d.id }}": "{{ d.name }}"{% if not loop.last %},{% endif %}{% endfor %} };
+  const el = document.getElementById('ev');
+  el.innerHTML = '<p class="hint">buscando na nuvem…</p>';
+  let html = '';
+  for(const id of ids){
+    const r = await fetch('/api/device/'+id+'/detail');
+    const j = await r.json();
+    const logs = (j.logs||[]).map(l=>{
+      const t = l.event_time ? new Date(l.event_time).toLocaleString('pt-BR') : '';
+      return `<div class="stat"><strong>${l.code||'evento'}</strong><span>${l.value ?? l.event_value ?? ''} · ${t}</span></div>`;
+    }).join('') || '<p class="hint">sem eventos recentes</p>';
+    html += `<section class="panel"><h2>${names[id]||id}</h2>${logs}</section>`;
+  }
+  el.innerHTML = html;
+}
+load();
+</script>
+</body>
+</html>

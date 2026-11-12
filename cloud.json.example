@@ -1,0 +1,6 @@
+{
+  "apiKey": "SEU_ACCESS_ID_DO_PLATFORM_TUYA",
+  "apiSecret": "SEU_ACCESS_SECRET",
+  "apiRegion": "us",
+  "apiDeviceID": "ID_DE_UMA_TOMADA_PARA_BOOTSTRAP"
+}

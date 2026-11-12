@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minhas Tomadas</title>
+<link rel="stylesheet" href="/static/style.css?v=3">
+</head>
+<body>
+<header>
+  <div>
+    <h1>Minhas Tomadas</h1>
+    <p id="summary">carregando…</p>
+    <p><a href="/dashboard">Ver dashboard →</a> · <a href="/eventos">Eventos</a> · <a href="/setup">Configuração</a> · <span id="modes"></span></p>
+  </div>
+  <div class="controls">
+    <div class="total"><span id="totalW">–</span><small>W total</small></div>
+    <label class="mode">Modo:
+      <select id="modeSel" onchange="setMode(this.value)">
+        <option value="auto">Auto (local → nuvem)</option>
+        <option value="local">Local (LAN)</option>
+        <option value="cloud">Nuvem (remoto)</option>
+      </select>
+    </label>
+  </div>
+</header>
+
+{% macro dev_body(x) %}
+    <div class="top">
+      <h2>{{ x.name }}</h2>
+      <span class="head-right">
+        <span class="dot" title="{{ 'online' if x.online else 'offline' }}"></span>
+        <span class="state-inline">{{ 'LIGADA' if x.on else 'DESLIGADA' if x.on is not none else '?' }} · <span class="e">{{ x.energy_kwh if x.energy_kwh is not none else '–' }}</span> kWh</span>
+        <label class="switch" title="Liga / desliga (espelha o estado real)">
+          <input type="checkbox" class="sw" data-id="{{ x.id }}"
+                 {{ 'checked' if x.on else '' }} {{ 'disabled' if x.on is none or not x.online else '' }}
+                 onchange="setSw('{{ x.id }}', this.checked, this)">
+          <span class="slider"></span>
+        </label>
+        <span class="src" title="{{ 'Rede local' if (x.source or 'local') != 'cloud' else 'Via nuvem' }}">{{ '🏠' if (x.source or 'local') != 'cloud' else '☁' }}</span>
+        <button class="iconbtn" onclick="info('{{ x.id }}')" title="Detalhes">⚙</button>
+      </span>
+    </div>
+    <div class="metrics">
+      <div><strong class="w">{{ x.watts if x.watts is not none else '–' }}</strong><span>W medido</span></div>
+      <div><strong class="wo">{{ x.watts_own if x.watts_own is not none else '–' }}</strong><span>W próprio</span></div>
+      <div><strong class="v">{{ x.volts if x.volts is not none else '–' }}</strong><span>V</span></div>
+      <div><strong class="a">{{ x.amps if x.amps is not none else '–' }}</strong><span>A</span></div>
+    </div>
+    {% if x.error %}<p class="err">{{ x.error }}</p>{% endif %}
+    {% if x.fallback %}<p class="warn">{{ x.fallback }}</p>{% endif %}
+    <div class="cd" data-cd="{{ x.id }}" {% if not x.countdown %}hidden{% endif %}>⏱ desliga em <strong>{{ x.countdown or '' }}</strong>s</div>
+    <div class="detail" id="detail-{{ x.id }}" hidden></div>
+{% endmacro %}
+<main id="grid">
+  {% for d in devices if not d.parent %}
+  <article class="card {{ 'on' if d.on else 'off' }} {{ 'is-pai' if d.children else '' }}" data-id="{{ d.id }}">
+    {{ dev_body(d) }}
+    {% set kids = devices | selectattr('parent', 'equalto', d.id) | list %}
+    {% if kids %}
+    <div class="kids">
+      <div class="kids-title">⚡ alimenta em cascata (incluídos no medido acima)</div>
+      {% for k in kids %}
+      <div class="card kid-full {{ 'on' if k.on else 'off' }}" data-id="{{ k.id }}">
+        {{ dev_body(k) }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</main>
+
+<footer>
+  <button class="ghost" onclick="refresh(true)">Atualizar agora</button>
+  <span id="caps">Auto: local primeiro, nuvem como fallback · sem anúncios</span>
+</footer>
+
+<script>
+let MODE = localStorage.getItem('mode') || 'auto';
+document.getElementById('modeSel').value = MODE;
+async function refresh(force=false){
+  const r = await fetch(`/api/status?mode=${MODE}`+(force?'&force=1':''));
+  const j = await r.json();
+  document.getElementById('totalW').textContent = j.total_watts;
+  document.getElementById('summary').textContent = `${j.online}/${j.total} online · modo ${j.mode}`;
+  const m = await (await fetch('/api/modes')).json();
+  document.getElementById('modes').textContent = `local:${m.local_available?'ok':'—'} nuvem:${m.cloud_available?'ok':'—'}`;
+  for(const d of j.devices){
+    for(const el of document.querySelectorAll(`[data-id="${d.id}"]`)){
+      if(!el.classList.contains('card')) continue;
+      el.classList.toggle('on', !!d.on);
+      el.classList.toggle('off', !d.on);
+      el.classList.toggle('is-pai', !!(d.children?.length));
+      const set = (sel, v)=>{ const n = el.querySelector(sel); if(n) n.textContent = v ?? '–'; };
+      // Atualiza só o bloco próprio: o card do pai contém o card do filho no DOM
+      const own = (sel)=>{
+        for(const n of el.querySelectorAll(sel)){
+          if(n.closest('[data-id]') === el){ n.textContent = ''; return n; }
+        }
+        return null;
+      };
+      const w = own('.w'); if(w) w.textContent = d.watts ?? '–';
+      const wo = own('.wo'); if(wo) wo.textContent = d.watts_own ?? '–';
+      const v = own('.v'); if(v) v.textContent = d.volts ?? '–';
+      const a = own('.a'); if(a) a.textContent = d.amps ?? '–';
+      const e = own('.e'); if(e) e.textContent = d.energy_kwh ?? '–';
+      const st = el.querySelector(':scope > .top .state-inline');
+      if(st?.childNodes[0]) st.childNodes[0].textContent = (d.on===true?'LIGADA':d.on===false?'DESLIGADA':'?') + ' · ';
+      const src = el.querySelector(':scope .head-right .src');
+      if(src){ const isCloud = (d.source || 'local') === 'cloud';
+        src.textContent = isCloud ? '☁' : '🏠';
+        src.title = isCloud ? 'Via nuvem' : 'Rede local'; }
+      const dot = el.querySelector(':scope > .top .head-right .dot'); if(dot) dot.title = d.online?'online':'offline';
+      el.style.opacity = d.online ? 1 : .55;
+      const cdc = el.querySelector(':scope > .cd');
+      if(cdc){ if(d.countdown){ cdc.hidden = false; cdc.querySelector('strong').textContent = d.countdown; }
+        else cdc.hidden = true; }
+      const sw = el.querySelector(':scope .head-right .sw');
+      if(sw){ sw.checked = !!d.on; sw.disabled = d.on == null || !d.online; }
+    }
+  }
+}
+function setMode(v){ MODE=v; localStorage.setItem('mode',v); refresh(true); }
+async function setSw(id, on, el){
+  el.disabled = true;
+  await fetch('/api/set/'+id, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({on: on, mode: MODE})});
+  setTimeout(()=>refresh(true), 800);
+}
+async function toggle(id){
+  await fetch('/api/toggle/'+id, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({mode: MODE})});
+  setTimeout(()=>refresh(true), 800);
+}
+async function info(id){
+  const el = document.getElementById('detail-'+id);
+  el.hidden = false; el.innerHTML = 'carregando nuvem…';
+  const r = await fetch('/api/device/'+id+'/detail');
+  const j = await r.json();
+  if(j.error){ el.innerHTML = `<p class="err">${j.error}</p>`; return; }
+  const st = j.status || {};
+  const fault = st.fault;
+  const faultHtml = (fault && fault !== 0)
+    ? `<p class="err">⚠ falha: ${fault}</p>` : `<p class="okline">✓ sem falhas</p>`;
+  const logHtml = (j.logs||[]).map(l=>{
+    const t = l.event_time ? new Date(l.event_time).toLocaleString('pt-BR') : '';
+    const v = l.value ?? l.event_value ?? '';
+    return `<div class="stat"><strong>${l.code||'evento'}</strong><span>${v} · ${t}</span></div>`;
+  }).join('') || '<p class="hint">sem logs recentes</p>';
+  el.innerHTML = `
+    ${faultHtml}
+    <div class="drow2"><span>⏱ Countdown (s p/ desligar)</span>
+      <input id="cd-${id}" type="number" min="0" max="86400" value="${st.countdown ?? 0}">
+      <button class="ghost sm" onclick="sendCmd('${id}', {countdown_1: +document.getElementById('cd-${id}').value})">Aplicar</button>
+      <button class="ghost sm" onclick="sendCmd('${id}', {countdown_1: 0})">Cancelar</button></div>
+    <div class="drow2"><span>🔌 Ao voltar energia</span>
+      <select id="rs-${id}">
+        ${['last','power_on','power_off'].map(v=>`<option value="${v}" ${st.relay_status===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+      <button class="ghost sm" onclick="sendCmd('${id}', {relay_status: document.getElementById('rs-${id}').value})">Aplicar</button></div>
+    <div class="drow2"><span>💡 LED</span>
+      <select id="lm-${id}">
+        ${['relay','pos','none'].map(v=>`<option value="${v}" ${st.light_mode===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+      <button class="ghost sm" onclick="sendCmd('${id}', {light_mode: document.getElementById('lm-${id}').value})">Aplicar</button></div>
+    <div class="drow2"><span>🔒 Trava infantil</span>
+      <button class="ghost sm" onclick="sendCmd('${id}', {child_lock: ${st.child_lock ? 'false' : 'true'}})">${st.child_lock ? 'Desativar' : 'Ativar'}</button></div>
+    <div class="drow2"><span>🔋 Anti-sobrecarga</span>
+      <button class="ghost sm" onclick="sendCmd('${id}', {overcharge_switch: ${st.overcharge ? 'false' : 'true'}})">${st.overcharge ? 'Desativar' : 'Ativar'}</button></div>
+    <h4>Últimos eventos</h4>${logHtml}`;
+}
+async function sendCmd(id, commands){
+  const r = await fetch('/api/device/'+id+'/cmd', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({commands})});
+  const j = await r.json();
+  if(!j.ok) alert('Falhou: ' + (j.error || 'erro'));
+  info(id); refresh(true);
+}
+setInterval(()=>refresh(false), 5000);
+refresh(false);
+</script>
+</body>
+</html>

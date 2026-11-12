@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configuração — Minhas Tomadas</title>
+<link rel="stylesheet" href="/static/style.css?v=3">
+</head>
+<body>
+<header>
+  <div><h1>Configuração</h1><p><a href="/">← Painel</a> · <a href="/dashboard">Dashboard</a></p></div>
+  <div class="total"><span id="stCount">–</span><small>devices</small></div>
+</header>
+
+<main class="setup">
+<section class="panel"><h2>1. Nuvem Tuya (equivale ao wizard)</h2>
+<p class="hint">Pegue em <b>platform.tuya.com → seu projeto → Overview</b>. Região: use a mesma do Link App Account (BR = us).</p>
+<div class="grid2">
+<label>Access ID<input id="apiKey" autocomplete="off"></label>
+<label>Access Secret<input id="apiSecret" type="password" autocomplete="off"></label>
+<label>Região<select id="region"><option value="us">us (Américas)</option><option value="eu">eu (Europa)</option><option value="cn">cn (China)</option><option value="in">in (Índia)</option></select></label>
+</div>
+<div class="row"><button onclick="saveCloud()">Salvar nuvem</button><button class="ghost" onclick="fetchCloud()">Buscar devices na nuvem</button></div>
+<pre class="info" id="cloudOut"></pre>
+</section>
+
+<section class="panel"><h2>2. Rede local (equivale ao scan.py)</h2>
+<div class="row"><button onclick="startScan()">Varrer rede (20s)</button><button class="ghost" onclick="pollScan()">Ver resultado</button></div>
+<pre class="info" id="scanOut">PC e tomadas no mesmo Wi-Fi. Se voltar vazio, cheque firewall/rede guest.</pre>
+</section>
+
+<section class="panel"><h2>2b. Histórico da nuvem</h2>
+<p class="hint">A nuvem guarda ~7 dias de relatórios (~18/h). Importa p/ o banco local de uma vez (~30 chamadas de API por tomada). Depois disso, minuto/dia/semana saem do banco local, sem gastar cota.</p>
+<div class="row"><button onclick="backfill()">Importar últimos 7 dias</button></div>
+<pre class="info" id="bfOut"></pre>
+</section>
+
+<section class="panel"><h2>3. Tomadas (equivale a editar devices.json)</h2>
+<p class="hint">Preencha nome, id, key (da nuvem), ip (do scan), versão. <b>Parent</b> = id do pai em cascata (ex: desktop → setup).</p>
+<div id="devList"></div>
+<div class="row"><button class="ghost" onclick="addRow()">+ Adicionar</button><button onclick="saveDevices()">Salvar tomadas</button></div>
+<pre class="info" id="devOut"></pre>
+</section>
+</main>
+
+<script>
+let DEVICES = {{ devices|tojson }};
+function row(d={}){
+  const div = document.createElement('div');
+  div.className = 'drow';
+  div.innerHTML = `
+    <input placeholder="nome" data-k="name" value="${d.name||''}">
+    <input placeholder="id" data-k="id" value="${d.id||''}">
+    <input placeholder="key" data-k="key" value="${d.key||''}">
+    <input placeholder="ip ex 192.168.0.101" data-k="ip" value="${d.ip||''}">
+    <input placeholder="versão 3.3" data-k="version" value="${d.version||'3.3'}" size="6">
+    <input placeholder="parent (id do pai)" data-k="parent" value="${d.parent||''}">
+    <button class="ghost" onclick="this.parentElement.remove()">✕</button>
+    <button class="ghost" onclick="testRow(this)">testar</button>`;
+  return div;
+}
+function render(){ const l=document.getElementById('devList'); l.innerHTML=''; DEVICES.forEach(d=>l.appendChild(row(d))); }
+function collect(){ return [...document.querySelectorAll('.drow')].map(r=>{ const o={}; r.querySelectorAll('input').forEach(i=>o[i.dataset.k]=i.value); return o; }); }
+function addRow(){ document.getElementById('devList').appendChild(row()); }
+async function saveCloud(){
+  const r = await fetch('/api/setup/cloud',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({apiKey:apiKey.value,apiSecret:apiSecret.value,region:region.value})});
+  cloudOut.textContent = JSON.stringify(await r.json(), null, 1);
+}
+async function fetchCloud(){
+  cloudOut.textContent = 'buscando na nuvem…';
+  const r = await fetch('/api/setup/cloud_fetch'); const j = await r.json();
+  cloudOut.textContent = JSON.stringify(j, null, 1).slice(0,2000);
+  if(j.ok && j.devices){ // mescla por id, preserva ip/parent locais
+    const cur = Object.fromEntries(collect().map(d=>[d.id,d]));
+    DEVICES = j.devices.map(d=>({...d, ip:cur[d.id]?.ip||'', parent:cur[d.id]?.parent||'', version:cur[d.id]?.version||'3.3'}));
+    render();
+  }
+}
+async function backfill(){
+  bfOut.textContent = 'importando ~7 dias da nuvem (pode levar 1-2 min)…';
+  const r = await fetch('/api/setup/backfill',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({days:7})});
+  bfOut.textContent = JSON.stringify(await r.json(), null, 1).slice(0,2000);
+}
+async function startScan(){ scanOut.textContent='varrendo… (20s)'; await fetch('/api/setup/scan',{method:'POST'}); setTimeout(pollScan, 22000); }
+async function pollScan(){ const r=await fetch('/api/setup/scan'); const j=await r.json();
+  scanOut.textContent = JSON.stringify(j,null,1).slice(0,2000);
+  if(j.result?.length){ scanOut.textContent += '\n\nCopie o IP para a linha do device com mesmo ID.'; } }
+async function saveDevices(){
+  const r = await fetch('/api/setup/devices',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({devices:collect()})});
+  devOut.textContent = JSON.stringify(await r.json(), null, 1);
+}
+async function testRow(btn){
+  const r = btn.parentElement; const id = r.querySelector('[data-k=id]').value;
+  btn.textContent='…';
+  const t = await (await fetch('/api/setup/test/'+id+'?mode=auto')).json();
+  btn.textContent='testar';
+  devOut.textContent = JSON.stringify({id, ok:t.ok, reading:{online:t.reading?.online, W:t.reading?.watts, V:t.reading?.volts, err:t.reading?.error}}, null, 1);
+}
+render();
+fetch('/api/setup/status').then(r=>r.json()).then(j=>stCount.textContent=j.devices_count);
+</script>
+</body>
+</html>

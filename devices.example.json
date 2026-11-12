@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Tomada 1 - Sala",
+    "id": "SEU_DEVICE_ID_AQUI",
+    "ip": "192.168.0.101",
+    "key": "SUA_LOCAL_KEY_AQUI",
+    "version": 3.3
+  },
+  {
+    "name": "Tomada 2 - Quarto",
+    "id": "SEU_DEVICE_ID_AQUI_2",
+    "ip": "192.168.0.102",
+    "key": "SUA_LOCAL_KEY_AQUI_2",
+    "version": 3.3
+  }
+]

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard — Minhas Tomadas</title>
+<link rel="stylesheet" href="/static/style.css?v=3">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Dashboard</h1>
+    <p><a href="/">← Voltar ao painel</a> · <span id="summary">carregando…</span></p>
+  </div>
+  <div class="total"><span id="totalKwh">–</span><small>kWh no período (raízes)</small></div>
+</header>
+
+<div class="toolbar">
+  <label>Período:
+    <select id="range" onchange="loadAll()">
+      <option value="2h">Minuto a minuto (2h)</option>
+      <option value="24h" selected>Por hora (24h)</option>
+      <option value="7d">Por dia (7 dias)</option>
+      <option value="30d">Por dia (30 dias)</option>
+      <option value="12m">Por mês (12 meses)</option>
+    </select>
+  </label>
+  <label>Tomada:
+    <select id="dev" onchange="loadAll()">
+      <option value="all">Todas</option>
+      {% for d in devices %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+    </select>
+  </label>
+</div>
+
+<main class="dash">
+  <section class="panel"><h2 id="chTitle">Consumo (kWh)</h2><canvas id="chMain"></canvas></section>
+  <section class="panel"><h2>Totais no período</h2><div id="stats"></div></section>
+</main>
+
+<script>
+let chMain=null;
+const RANGE_TITLES = {'2h':'Potência minuto a minuto (W)','24h':'Consumo por hora (kWh)',
+  '7d':'Consumo por dia (kWh)','30d':'Consumo por dia (kWh)','12m':'Consumo por mês (kWh)'};
+const FAM = ['#2a6df4', '#34d399', '#9a6bff', '#e0a100'];
+async function loadAll(){
+  const range = document.getElementById('range').value;
+  const dev = document.getElementById('dev').value;
+  const s = await (await fetch(`/api/series?range=${range}&device=${dev}`)).json();
+  document.getElementById('chTitle').textContent = RANGE_TITLES[range] || 'Consumo';
+  document.getElementById('totalKwh').textContent = s.roots_total_kwh ?? s.total_kwh ?? '–';
+  document.getElementById('summary').textContent = `${Object.keys(s.by_device||{}).length} tomada(s) · total soma só raízes`;
+  const byId = Object.fromEntries((s.devices||[]).map(d=>[d.id, d]));
+  const roots = (s.devices||[]).filter(d=>!d.parent);
+  roots.forEach((d, i)=>{ d._color = FAM[i % FAM.length]; });
+  (s.devices||[]).filter(d=>d.parent).forEach(d=>{ d._color = (byId[d.parent]||{})._color || '#9aa0ae'; });
+  const bd = s.by_device || {};
+  document.getElementById('stats').innerHTML = roots.map(d=>{
+    const info = bd[d.id] || {total: 0};
+    const kids = (s.devices||[]).filter(k=>k.parent===d.id);
+    const kidSum = kids.reduce((a,k)=>a+((bd[k.id]||{}).total||0), 0);
+    const own = Math.max(0, Math.round(((info.total||0) - kidSum) * 1000) / 1000);
+    const kidHtml = kids.map(k=>{
+      const ki = bd[k.id] || {total: 0};
+      return `<div class="card kid-full"><div class="top"><h2>↳ ${k.name}</h2></div>`
+        + `<div class="kwh-big">${ki.total} <small>kWh</small></div>`
+        + `<p class="hint">incluído no total do pai (não soma de novo)</p></div>`;
+    }).join('');
+    const ownTxt = kids.length ? ` · ${own} kWh próprios` : '';
+    return `<div class="stat root"><strong>${d.name}</strong><span>${info.total||0} kWh${ownTxt}</span></div>` + kidHtml;
+  }).join('') || '<p>Sem dados ainda — importe o histórico em Configuração ou deixe o app rodando.</p>';
+
+  if(chMain) chMain.destroy();
+  const ctx = document.getElementById('chMain');
+  if(s.gran === 'min'){
+    const datasets = Object.entries(bd).map(([id, dd])=>{
+      const meta = byId[id] || {};
+      const isKid = !!meta.parent;
+      return {label: (isKid ? '↳ ' : '') + (dd.name || id) + (isKid ? ' (dentro do ' + ((byId[meta.parent]||{}).name || 'pai') + ')' : ''),
+        data: dd.series.map(p=>p.w), borderColor: meta._color || '#9aa0ae',
+        borderWidth: 2, tension: .3, fill: false, borderDash: isKid ? [6, 4] : [],
+        pointRadius: 0};
+    });
+    const tlabels = ((Object.values(bd)[0] || {}).series || []).map(p=>new Date(p.t*1000).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}));
+    chMain = new Chart(ctx, {type:'line', data:{labels:tlabels, datasets},
+      options:{responsive:true, plugins:{legend:{labels:{color:'#e8eaf0'}}},
+      scales:{x:{ticks:{color:'#9aa0ae',maxTicksLimit:12}},y:{ticks:{color:'#9aa0ae'},title:{display:true,text:'W',color:'#9aa0ae'}}}}});
+  } else {
+    const labels = s.buckets.map(b=>b.label);
+    const datasets = roots.map(d=>({label: d.name, data: ((bd[d.id]||{}).series || []),
+      backgroundColor: d._color}));
+    const kidDs = (s.devices||[]).filter(d=>d.parent).map(d=>({label: '↳ ' + d.name + ' (dentro do ' + ((byId[d.parent]||{}).name || 'pai') + ')',
+      data: ((bd[d.id]||{}).series || []), backgroundColor: d._color,
+      borderColor: '#0f1319', borderWidth: 1}));
+    chMain = new Chart(ctx, {type:'bar', data:{labels, datasets: [...datasets, ...kidDs]},
+      options:{responsive:true, plugins:{legend:{labels:{color:'#e8eaf0'}},
+        tooltip:{callbacks:{footer:(items)=>{ const l = items[0].dataset.label || '';
+          return l.startsWith('↳') ? 'Filho em cascata: já incluído no total do pai' : 'Raiz: conta no total'; }}}},
+        scales:{x:{ticks:{color:'#9aa0ae',maxTicksLimit:12},stacked:false},y:{ticks:{color:'#9aa0ae'},title:{display:true,text:'kWh',color:'#9aa0ae'}}}}});
+  }
+}
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Dashboard</h1>
+    <p><a href="/">← Voltar ao painel</a> · <span id="summary">carregando…</span></p>
+  </div>
+  <div class="total"><span id="totalKwh">–</span><small>kWh no período (raízes)</small></div>
+</header>
+
+<div class="toolbar">
+  <label>Período:
+    <select id="range" onchange="loadAll()">
+      <option value="2h">Minuto a minuto (2h)</option>
+      <option value="24h" selected>Por hora (24h)</option>
+      <option value="7d">Por dia (7 dias)</option>
+      <option value="30d">Por dia (30 dias)</option>
+      <option value="12m">Por mês (12 meses)</option>
+    </select>
+  </label>
+  <label>Tomada:
+    <select id="dev" onchange="loadAll()">
+      <option value="all">Todas</option>
+      {% for d in devices %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}
+    </select>
+  </label>
+</div>
+
+<main class="dash">
+  <section class="panel"><h2 id="chTitle">Consumo (kWh)</h2><canvas id="chMain"></canvas></section>
+  <section class="panel"><h2>Totais no período</h2><div id="stats"></div></section>
+</main>
+
+<script>
+let chW=null, chKwh=null;
+async function loadAll(){
+  const hours = document.getElementById('hours').value;
+  const dev = document.getElementById('dev').value;
+  const [h, s] = await Promise.all([
+    (await fetch(`/api/history?device=${dev}&hours=${hours}`)).json(),
+    (await fetch(`/api/stats?hours=${hours}`)).json(),
+  ]);
+  document.getElementById('totalKwh').textContent = s.total_kwh_roots ?? s.total_kwh;
+  document.getElementById('summary').textContent = `${s.devices.length} tomada(s) com dados · ${hours}h · total soma só raízes`;
+  const byId = Object.fromEntries(s.devices.map(d=>[d.id, d]));
+  const roots = s.devices.filter(d=>!d.parent);
+  const own = (d)=>{
+    const kids = s.devices.filter(k=>k.parent===d.id);
+    const ke = kids.reduce((a,k)=>a+(k.kwh||0), 0);
+    return Math.max(0, Math.round(((d.kwh||0) - ke) * 1000) / 1000);
+  };
+  document.getElementById('stats').innerHTML = roots.map(d=>{
+    const kids = s.devices.filter(k=>k.parent===d.id);
+    const kidHtml = kids.map(k=>
+      `<div class="card kid-full"><div class="top"><h2>↳ ${k.name}</h2></div>`
+      + `<div class="kwh-big">${k.kwh} <small>kWh</small></div>`
+      + `<p class="hint">média ${k.avg_w} W · ${k.points} leituras · incluído no total do pai (não soma de novo)</p></div>`).join('');
+    const ownTxt = kids.length ? ` · ${own(d)} kWh próprios` : '';
+    return `<div class="stat root"><strong>${d.name}</strong><span>${d.kwh} kWh${ownTxt} · média ${d.avg_w} W</span></div>` + kidHtml;
+  }).join('') || '<p>Sem dados ainda — deixe o app rodando que ele registra a cada 30s.</p>';
+
+  // Agrupa por device para o grafico de W — mesma cor por família (filho = mesma cor, tracejado)
+  const famColor = {};
+  roots.forEach((d, i)=>{ famColor[d.id] = ['#2a6df4', '#34d399', '#9a6bff', '#e0a100'][i % 4]; });
+  s.devices.filter(d=>d.parent).forEach(d=>{ famColor[d.id] = famColor[d.parent] || '#9aa0ae'; });
+  const byDev = {};
+  for(const r of h){ (byDev[r.device_id] ??= []).push(r); }
+  const labels = [...new Set(h.map(r=>new Date(r.ts*1000).toLocaleString('pt-BR',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})))];
+  // usa timestamps como eixo simplificado
+  const devById = Object.fromEntries(s.devices.map(d=>[d.id, d]));
+  const datasets = Object.entries(byDev).map(([id, pts])=>{
+    const meta = devById[id] || {};
+    const isKid = !!meta.parent;
+    return {
+      label: (isKid ? '↳ ' : '') + (pts[0].name || id) + (isKid ? ' (dentro do ' + ((devById[meta.parent]||{}).name || 'pai') + ')' : ''),
+      data: pts.map(p=>p.watts||0),
+      borderColor: famColor[id] || '#9aa0ae',
+      backgroundColor: famColor[id] || '#9aa0ae',
+      borderWidth: 2, tension: .3, fill: false,
+      borderDash: isKid ? [6, 4] : [],
+    };
+  });
+  const tlabels = Object.values(byDev)[0]?.map(p=>new Date(p.ts*1000).toLocaleString('pt-BR',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})) || [];
+  if(chW) chW.destroy();
+  chW = new Chart(document.getElementById('chW'), {type:'line',
+    data:{labels:tlabels, datasets},
+    options:{responsive:true, plugins:{legend:{labels:{color:'#e8eaf0'}}}, scales:{x:{ticks:{color:'#9aa0ae',maxTicksLimit:10}},y:{ticks:{color:'#9aa0ae'},title:{display:true,text:'W',color:'#9aa0ae'}}}}});
+
+  if(chKwh) chKwh.destroy();
+  const barLabels = s.devices.map(d=>(d.parent ? '↳ ' : '') + d.name);
+  chKwh = new Chart(document.getElementById('chKwh'), {type:'bar',
+    data:{labels:barLabels, datasets:[{data:s.devices.map(d=>d.kwh),
+      backgroundColor:s.devices.map(d=>d.parent ? '#2f7d4f' : '#2a6df4')}]},
+    options:{responsive:true, plugins:{legend:{display:false},
+      tooltip:{callbacks:{footer:(items)=>{ const d=s.devices[items[0].dataIndex];
+        return d.parent ? 'Filho em cascata: já incluído no total do pai' : 'Raiz: conta no total'; }}}},
+      scales:{x:{ticks:{color:'#9aa0ae'}},y:{ticks:{color:'#9aa0ae'},title:{display:true,text:'kWh',color:'#9aa0ae'}}}}});
+}
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>

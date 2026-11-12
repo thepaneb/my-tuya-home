@@ -1,0 +1,17 @@
+devices.json
+cloud.json
+tuya*.json
+snapshot.json
+tuya-raw.json
+history.db
+history.db-wal
+history.db-shm
+history.db-journal
+build/
+dist/
+__pycache__/
+*.pyc
+power_log.csv
+.venv/
+.vscode/
+.idea/
