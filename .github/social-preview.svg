@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1a222c" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0b0f14" stop-opacity="1"/>
+      <stop offset="0.75" stop-color="#0b0f14" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#0b0f14" stop-opacity="0.55"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="#0b0f14"/>
+  <rect width="1280" height="640" fill="url(#grid)" opacity="0.55"/>
+  <rect width="1280" height="640" fill="url(#fade)"/>
+  <rect x="0" y="0" width="1280" height="8" fill="#ffb27a"/>
+  <circle cx="1150" cy="120" r="220" fill="#ffb27a" opacity="0.08"/>
+  <circle cx="1170" cy="520" r="160" fill="#ffb27a" opacity="0.06"/>
+
+  <text x="88" y="100" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="20" letter-spacing="4" fill="#ffb27a">SELF-HOSTED APP</text>
+  <text x="88" y="252" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="86" font-weight="700" letter-spacing="-3" fill="#e6edf3">My Tuya Home</text>
+  <text x="88" y="352" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="31" fill="#9aa6b2">Your smart plugs, without the cloud detour</text><text x="88" y="398" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="31" fill="#9aa6b2">LAN-first · live energy · Flet native app</text>
+  
+    <g>
+      <rect x="88" y="470" width="134" height="46" rx="23" fill="#111820" stroke="#ffb27a" stroke-opacity="0.45"/>
+      <text x="155" y="500" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="21" fill="#dbe6f0">Python</text>
+    </g>
+    <g>
+      <rect x="236" y="470" width="119" height="46" rx="23" fill="#111820" stroke="#ffb27a" stroke-opacity="0.45"/>
+      <text x="295.5" y="500" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="21" fill="#dbe6f0">Flask</text>
+    </g>
+    <g>
+      <rect x="369" y="470" width="104" height="46" rx="23" fill="#111820" stroke="#ffb27a" stroke-opacity="0.45"/>
+      <text x="421" y="500" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="21" fill="#dbe6f0">Flet</text>
+    </g>
+    <g>
+      <rect x="487" y="470" width="104" height="46" rx="23" fill="#111820" stroke="#ffb27a" stroke-opacity="0.45"/>
+      <text x="539" y="500" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="21" fill="#dbe6f0">Tuya</text>
+    </g>
+
+  <g transform="translate(1010 175)">
+    <rect width="200" height="200" rx="46" fill="#ffb27a" fill-opacity="0.10" stroke="#ffb27a" stroke-opacity="0.55" stroke-width="2"/>
+    <text x="100" y="128" text-anchor="middle" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="82" font-weight="700" fill="#ffb27a">TH</text>
+  </g>
+
+  <line x1="88" y1="568" x2="1192" y2="568" stroke="#26303a" stroke-width="1"/>
+  <text x="88" y="610" font-family="DejaVu Sans Mono, Menlo, Consolas, monospace" font-size="21" fill="#dbe6f0">github.com/thepaneb/my-tuya-home</text>
+  <text x="1192" y="610" text-anchor="end" font-family="DejaVu Sans, Arial, Helvetica, sans-serif" font-size="20" fill="#9aa6b2">Gil Cleber Barboza</text>
+</svg>

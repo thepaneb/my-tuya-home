@@ -4,6 +4,8 @@ Painel limpo (sem anúncios) para tomadas inteligentes Tuya/SmartLife com mediç
 Fala direto com as tomadas na rede local e usa a nuvem Tuya só como fallback e para
 recursos remotos. Web + app nativo multiplataforma, mesmo core Python.
 
+**Site:** <https://thepaneb.github.io/my-tuya-home/>
+
 ![Painel do app com as 3 tomadas, cascata e total em tempo real](docs/screenshot.png)
 
 ## Telas
