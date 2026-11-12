@@ -1,6 +1,6 @@
 devices.json
 cloud.json
-tuya*.json
+*tuya*.json
 snapshot.json
 tuya-raw.json
 history.db
